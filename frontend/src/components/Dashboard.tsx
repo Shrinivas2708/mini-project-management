@@ -91,7 +91,6 @@ export default function Dashboard() {
         ))}
       </div>
 
-       {/* Project Modal */}
        {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm z-50">
             <form onSubmit={handleCreate} className="bg-white rounded-2xl p-8 w-full max-w-lg shadow-2xl">

@@ -2,7 +2,7 @@ import graphene
 from graphene_django import DjangoObjectType
 from .models import Organization, Project, Task, TaskComment
 
-# --- 1. Types ---
+
 
 class OrganizationType(DjangoObjectType):
     class Meta:
@@ -33,7 +33,6 @@ class ProjectType(DjangoObjectType):
     def resolve_completed_task_count(self, info):
         return self.tasks.filter(status='DONE').count()
 
-# --- 2. Mutations (Must be defined BEFORE the Mutation class below) ---
 
 class CreateProject(graphene.Mutation):
     class Arguments:
@@ -106,8 +105,48 @@ class UpdateProjectStatus(graphene.Mutation):
         project.status = status
         project.save()
         return UpdateProjectStatus(project=project)
+class UpdateProjectDetails(graphene.Mutation):
+    class Arguments:
+        project_id = graphene.ID(required=True)
+        name = graphene.String()
+        description = graphene.String()
+        due_date = graphene.Date()
 
-# --- 3. Main Schema (Uses the classes defined above) ---
+    project = graphene.Field(ProjectType)
+
+    def mutate(self, info, project_id, name=None, description=None, due_date=None):
+        project = Project.objects.get(pk=project_id)
+        if name:
+            project.name = name
+        if description is not None:
+            project.description = description
+        if due_date:
+            project.due_date = due_date
+        project.save()
+        return UpdateProjectDetails(project=project)
+
+class UpdateTaskDetails(graphene.Mutation):
+    class Arguments:
+        task_id = graphene.ID(required=True)
+        title = graphene.String()
+        description = graphene.String()
+        assignee_email = graphene.String()
+        due_date = graphene.DateTime()
+
+    task = graphene.Field(TaskType)
+
+    def mutate(self, info, task_id, title=None, description=None, assignee_email=None, due_date=None):
+        task = Task.objects.get(pk=task_id)
+        if title:
+            task.title = title
+        if description is not None:
+            task.description = description
+        if assignee_email:
+            task.assignee_email = assignee_email
+        if due_date:
+            task.due_date = due_date
+        task.save()
+        return UpdateTaskDetails(task=task)
 
 class Query(graphene.ObjectType):
     projects = graphene.List(ProjectType, org_slug=graphene.String(required=True))
@@ -129,5 +168,7 @@ class Mutation(graphene.ObjectType):
     update_task_status = UpdateTaskStatus.Field()
     add_comment = AddComment.Field()
     update_project_status = UpdateProjectStatus.Field()
+    update_project_details = UpdateProjectDetails.Field()
+    update_task_details = UpdateTaskDetails.Field()
 
 schema = graphene.Schema(query=Query, mutation=Mutation)

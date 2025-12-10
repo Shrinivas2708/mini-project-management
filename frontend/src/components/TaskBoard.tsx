@@ -4,6 +4,7 @@ import { useParams, Link } from "react-router-dom";
 import { gql } from "@apollo/client";
 import { PlusCircle, MessageSquare } from "lucide-react";
 import { useState } from "react";
+
 interface TaskBoardData {
   project: {
     id: string;
@@ -19,12 +20,14 @@ interface TaskBoardData {
     }[];
   };
 }
+
 const GET_PROJECT_DETAILS = gql`
   query GetProjectDetails($id: ID!) {
     project(id: $id) {
       id
       name
       description
+      status
       tasks {
         id
         title
@@ -32,7 +35,22 @@ const GET_PROJECT_DETAILS = gql`
         assigneeEmail
         comments {
           id
+          content
+          authorEmail
+          createdAt
         }
+      }
+    }
+  }
+`;
+
+const ADD_COMMENT = gql`
+  mutation AddComment($taskId: ID!, $content: String!, $authorEmail: String!) {
+    addComment(taskId: $taskId, content: $content, authorEmail: $authorEmail) {
+      comment {
+        id
+        content
+        createdAt
       }
     }
   }
@@ -49,6 +67,7 @@ const CREATE_TASK = gql`
     }
   }
 `;
+
 const UPDATE_PROJECT_STATUS = gql`
   mutation UpdateProjectStatus($projectId: ID!, $status: String!) {
     updateProjectStatus(projectId: $projectId, status: $status) {
@@ -59,6 +78,7 @@ const UPDATE_PROJECT_STATUS = gql`
     }
   }
 `;
+
 const UPDATE_TASK_STATUS = gql`
   mutation UpdateTaskStatus($taskId: ID!, $status: String!) {
     updateTaskStatus(taskId: $taskId, status: $status) {
@@ -72,14 +92,20 @@ const UPDATE_TASK_STATUS = gql`
 
 export default function TaskBoard() {
   const { projectId } = useParams();
-  const { loading, error, data, refetch } = useQuery<TaskBoardData >(GET_PROJECT_DETAILS, {
-    variables: { id: projectId },
-  });
+  const { loading, error, data, refetch } = useQuery<TaskBoardData>(
+    GET_PROJECT_DETAILS,
+    {
+      variables: { id: projectId },
+    }
+  );
 
   const [createTask] = useMutation(CREATE_TASK, {
     onCompleted: () => refetch(),
   });
-  // Inside TaskBoard component
+  const [addComment] = useMutation(ADD_COMMENT, {
+    onCompleted: () => refetch(),
+  });
+  
   const [updateProjectStatus] = useMutation(UPDATE_PROJECT_STATUS);
 
   const toggleProjectStatus = (currentStatus: string | undefined) => {
@@ -87,6 +113,23 @@ export default function TaskBoard() {
     updateProjectStatus({
       variables: { projectId, status: newStatus },
     });
+  };
+
+  const [selectedTask, setSelectedTask] = useState<any>(null);
+  const [commentText, setCommentText] = useState("");
+
+  const handleAddComment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTask || !commentText.trim()) return;
+
+    addComment({
+      variables: {
+        taskId: selectedTask.id,
+        content: commentText,
+        authorEmail: "me@demo.com",
+      },
+    });
+    setCommentText("");
   };
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -112,7 +155,7 @@ export default function TaskBoard() {
 
   return (
     <div className="h-[calc(100vh-64px)] flex flex-col p-6">
-      {/* Header */}
+
       <div className="flex justify-between items-center mb-8">
         <div>
           <Link
@@ -122,7 +165,7 @@ export default function TaskBoard() {
             ← Back to Dashboard
           </Link>
           <button
-            onClick={() => toggleProjectStatus(project?.status )}
+            onClick={() => toggleProjectStatus(project?.status)}
             className={`px-3 py-1 text-xs font-bold rounded-full border transition-all ${
               project?.status === "ACTIVE"
                 ? "bg-green-100 text-green-700 border-green-200 hover:bg-green-200"
@@ -145,29 +188,87 @@ export default function TaskBoard() {
         </button>
       </div>
 
-      {/* Kanban Columns */}
       <div className="flex gap-6 overflow-x-auto pb-4 h-full">
         <Column
           title="To Do"
           status="TODO"
           color="border-gray-300"
           tasks={project?.tasks.filter((t: any) => t.status === "TODO")}
+          onTaskClick={setSelectedTask}
         />
         <Column
           title="In Progress"
           status="IN_PROGRESS"
           color="border-blue-400"
           tasks={project?.tasks.filter((t: any) => t.status === "IN_PROGRESS")}
+          onTaskClick={setSelectedTask}
         />
         <Column
           title="Completed"
           status="DONE"
           color="border-green-400"
           tasks={project?.tasks.filter((t: any) => t.status === "DONE")}
+          onTaskClick={setSelectedTask}
         />
       </div>
 
-      {/* Simple Modal */}
+      {selectedTask && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-2xl font-bold">{selectedTask.title}</h2>
+              <button
+                onClick={() => setSelectedTask(null)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mb-6 bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-sm font-semibold text-gray-500 uppercase mb-2">
+                Comments
+              </h3>
+              <div className="space-y-3 mb-4">
+                {selectedTask.comments.length === 0 ? (
+                  <p className="text-sm text-gray-400 italic">
+                    No comments yet.
+                  </p>
+                ) : (
+                  selectedTask.comments.map((c: any) => (
+                    <div
+                      key={c.id}
+                      className="text-sm border-l-2 border-indigo-200 pl-3"
+                    >
+                      <span className="font-bold text-gray-700">
+                        {c.authorEmail}
+                      </span>
+                      <p className="text-gray-600">{c.content}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <form onSubmit={handleAddComment} className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Write a comment..."
+                  className="flex-1 border rounded px-3 py-2 text-sm"
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                />
+                <button
+                  type="submit"
+                  className="bg-indigo-600 text-white px-3 py-2 rounded text-sm font-medium"
+                >
+                  Post
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
           <form
@@ -204,11 +305,15 @@ export default function TaskBoard() {
     </div>
   );
 }
-function Column({ title, status, tasks, color }: any) {
+
+function Column({ title, status, tasks, color, onTaskClick }: any) {
   const [updateStatus] = useMutation(UPDATE_TASK_STATUS);
-  const moveTask = (taskId: string, newStatus: string) => {
+  
+  const moveTask = (e: React.MouseEvent, taskId: string, newStatus: string) => {
+    e.stopPropagation(); 
     updateStatus({ variables: { taskId, status: newStatus } });
   };
+
   return (
     <div className="flex-1 min-w-[300px] bg-gray-50 rounded-xl p-4 flex flex-col h-full">
       <div className={`flex items-center gap-2 mb-4 pb-2 border-b-2 ${color}`}>
@@ -224,7 +329,8 @@ function Column({ title, status, tasks, color }: any) {
         {tasks.map((task: any) => (
           <div
             key={task.id}
-            className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-all group"
+            onClick={() => onTaskClick(task)} 
+            className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-all group cursor-pointer"
           >
             <div className="flex justify-between items-start mb-2">
               <h4 className="font-semibold text-gray-800">{task.title}</h4>
@@ -233,13 +339,13 @@ function Column({ title, status, tasks, color }: any) {
               <div className="flex items-center gap-1">
                 <MessageSquare size={14} /> {task.comments.length}
               </div>
-              {/* Quick Move Buttons */}
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                {/* LEFT ARROW (Move Backward) */}
+              
                 {status !== "TODO" && (
                   <button
-                    onClick={() =>
+                    onClick={(e) =>
                       moveTask(
+                        e,
                         task.id,
                         status === "DONE" ? "IN_PROGRESS" : "TODO"
                       )
@@ -251,11 +357,11 @@ function Column({ title, status, tasks, color }: any) {
                   </button>
                 )}
 
-                {/* RIGHT ARROW (Move Forward) */}
                 {status !== "DONE" && (
                   <button
-                    onClick={() =>
+                    onClick={(e) =>
                       moveTask(
+                        e,
                         task.id,
                         status === "TODO" ? "IN_PROGRESS" : "DONE"
                       )
